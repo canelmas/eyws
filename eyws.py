@@ -12,8 +12,8 @@ DEFAULT_NUM_OF_INSTANCES = 1
 
 def parse_args():
     parser = OptionParser(usage="eyws-ec2 [options] <action>"
-                                + "\n\n<action> can be: create-ec2, stop-ec2, terminate-ec2, list-ec2," +
-                                "list-zones, list-regions, list-images",
+                                + "\n\n<action> can be: create-instances, stop-ec2, terminate-ec2, list-instances," +
+                                "list-zones, list-regions, list-images, list-sec-groups",
                           version="%prog {}".format(VERSION))
 
     parser.add_option("-n", "--number", type="int", default=DEFAULT_NUM_OF_INSTANCES,
@@ -99,7 +99,7 @@ def list_availability_zones(ec2, opts):
         print(zone)
 
 
-def list_images(ec2, opts):
+def list_images(ec2):
     # for now listS only ubuntu images
     filters = [
         {
@@ -133,6 +133,21 @@ def list_images(ec2, opts):
         print(image_info)
 
 
+def create_instances(ec2, opts):
+    pass
+
+
+def list_security_groups(ec2):
+    for sec_group in ec2.describe_security_groups()["SecurityGroups"]:
+        print("name={}\ngroupId={}\ndescription={}\nIpPermissions={}\n"
+              .format(sec_group["GroupName"],
+                      sec_group["GroupId"],
+                      sec_group["Description"],
+                      [("port={}".format(ip_permission["FromPort"]),
+                        "cidr={}".format(ip_permission["IpRanges"][0]["CidrIp"])) for ip_permission in
+                       sec_group["IpPermissions"]]))
+
+
 def execute():
     (opts, action) = parse_args()
 
@@ -140,16 +155,19 @@ def execute():
 
         ec2 = boto3.client("ec2", region_name=opts.region if opts.region else None)
 
-        if action == "create":
+        if action == "create-instances":
             print("'{}' will be supported soon.".format(action))
+            # create_instances(ec2, opts)
+        elif action == "list-sec-groups":
+            list_security_groups(ec2)
         elif action == "list-instances":
             list_instances(ec2, opts)
         elif action == "list-regions":
             list_regions(ec2, opts)
-        elif action == "list-azones":
+        elif action == "list-zones":
             list_availability_zones(ec2, opts)
         elif action == "list-images":
-            list_images(ec2, opts)
+            list_images(ec2)
         else:
             print("'{}' not supported!".format(action))
 
