@@ -1,4 +1,3 @@
-import os
 import sys
 from optparse import OptionParser
 
@@ -9,12 +8,6 @@ UBUNTU_AMI = "ami-1e339e71"
 DRY_RUN = False
 DEFAULT_AMI = UBUNTU_AMI
 DEFAULT_NUM_OF_INSTANCES = 1
-
-
-def aws():
-    s3 = boto3.resource("s3")
-    for bucket in s3.buckets.all():
-        print(bucket.name)
 
 
 def parse_args():
@@ -140,7 +133,7 @@ def list_images(ec2, opts):
         print(image_info)
 
 
-def parse():
+def execute():
     (opts, action) = parse_args()
 
     try:
@@ -165,9 +158,5 @@ def parse():
         sys.exit(1)
 
 
-def main():
-    parse()
-
-
 if __name__ == "__main__":
-    main()
+    execute()
