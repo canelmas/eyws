@@ -25,8 +25,8 @@ EBS_VOLUME_TYPES = [("standard", "Magnetic"),
 def parse_args():
     parser = OptionParser(usage="eyws-ec2 <action> [options]\n\n<action> can be:\n\t\t"
                                 "create-instances\n\t\t"
-                                "stop-ec2\n\t\t"
-                                "terminate-ec2\n\t\t"
+                                "stop-instances\n\t\t"
+                                "terminate-instances\n\t\t"
                                 "list-instances\n\t\t"
                                 "list-zones\n\t\t"
                                 "list-regions\n\t\t"
