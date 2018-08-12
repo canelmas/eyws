@@ -84,6 +84,9 @@ def parse_args():
     parser.add_option("-s", "--sec-group", metavar="Security Group Name",
                       help="Security Group name to use for launching instances")
 
+    parser.add_option("--instance-id", metavar="instance Id", action="append", dest="instance_ids",
+                      help="instance ids to star/stop/destroy")
+
     parser.add_option("--dry-run", action="store_true", help="Dry run operations")
 
     (opts, args) = parser.parse_args()
@@ -100,10 +103,10 @@ def parse_args():
 def list_instances(ec2, opts):
     for res in ec2.describe_instances()["Reservations"]:
         for instance in res["Instances"]:
-            print("imageId = {}\n"
+            print("instanceId = {}\n"
+                  "imageId = {}\n"
                   "state = {}\n"
                   "state-message = {}\n"
-                  "instanceId = {}\n"
                   "type = {}\n"
                   "keyname = {}\n"
                   "monitoring = {}\n"
@@ -117,10 +120,10 @@ def list_instances(ec2, opts):
                   "tags = {}\n"
                   "core-count = {}\n"
                   "thread-per-core = {}\n"
-                  "security-groups = {}\n\n".format(instance["ImageId"],
+                  "security-groups = {}\n\n".format(instance["InstanceId"],
+                                                    instance["ImageId"],
                                                     instance["State"]["Name"],
                                                     instance["StateTransitionReason"],
-                                                    instance["InstanceId"],
                                                     instance["InstanceType"],
                                                     instance["KeyName"],
                                                     instance["Monitoring"]["State"],
@@ -184,7 +187,6 @@ def list_images(ec2):
 
 def create_instances(ec2, opts):
     # todo : key pair must be set
-    list_opts(opts)
 
     # use existing keypair or create new one
     key = get_or_create_key_pair(ec2, opts)
@@ -303,10 +305,54 @@ def list_opts(opts):
     print("volumeType={}".format(opts.ebs_vol_type))
     print("deleteTerm={}".format(opts.ebs_delete_on_term))
     print("volName={}".format(opts.ebs_vol_name))
+    print("instanceids={}".format(opts.instance_ids))
+
+
+def stop_instances(ec2, opts):
+    resp = input("Following instances will be stopped {}\n\nAre you sure you want to stop instances? (y/N):".
+                 format(opts.instance_ids))
+
+    if resp == 'y':
+        print("Stopping following instances {}...".format(opts.instance_ids))
+        resp = ec2.stop_instances(InstanceIds=opts.instance_ids, DryRun=bool(opts.dry_run))
+
+        for instance_info in [(state["InstanceId"], state["PreviousState"]["Name"], state["CurrentState"]["Name"])
+                              for state in resp["StoppingInstances"]]:
+            print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
+                                                                                instance_info[1],
+                                                                                instance_info[2]))
+
+
+def terminate_instances(ec2, opts):
+    resp = input("Following instances will be terminated {}\n\nAre you sure you want to terminate instances? (y/N):".
+                 format(opts.instance_ids))
+
+    if resp == 'y':
+        print("Terminating following instances {}...".format(opts.instance_ids))
+        resp = ec2.terminate_instances(InstanceIds=opts.instance_ids, DryRun=bool(opts.dry_run))
+
+        for instance_info in [(state["InstanceId"], state["PreviousState"]["Name"], state["CurrentState"]["Name"])
+                              for state in resp["TerminatingInstances"]]:
+            print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
+                                                                                instance_info[1],
+                                                                                instance_info[2]))
+
+
+def start_instances(ec2, opts):
+    print("Starting following instances {}...".format(opts.instance_ids))
+    resp = ec2.start_instances(InstanceIds=opts.instance_ids, DryRun=bool(opts.dry_run))
+
+    for instance_info in [(instance["InstanceId"], instance["PreviousState"]["Name"], instance["CurrentState"]["Name"])
+                          for instance in resp["StartingInstances"]]:
+        print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
+                                                                            instance_info[1],
+                                                                            instance_info[2]))
 
 
 def execute():
     (opts, action) = parse_args()
+
+    list_opts(opts)
 
     try:
 
@@ -326,6 +372,12 @@ def execute():
             list_images(ec2)
         elif action == "list-key-pairs":
             list_key_pairs(ec2)
+        elif action == "stop-instances":
+            stop_instances(ec2, opts)
+        elif action == "start-instances":
+            start_instances(ec2, opts)
+        elif action == "terminate-instances":
+            terminate_instances(ec2, opts)
         else:
             print("'{}' not supported!".format(action))
 
