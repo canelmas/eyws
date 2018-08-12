@@ -11,9 +11,9 @@ DEFAULT_NUM_OF_INSTANCES = 1
 
 
 def parse_args():
-    parser = OptionParser(usage="eyws-ec2 [options] <action>"
+    parser = OptionParser(usage="eyws-ec2 <action> [options] "
                                 + "\n\n<action> can be: create-instances, stop-ec2, terminate-ec2, list-instances," +
-                                "list-zones, list-regions, list-images, list-sec-groups",
+                                "list-zones, list-regions, list-images, list-sec-groups, list-keypairs",
                           version="%prog {}".format(VERSION))
 
     parser.add_option("-n", "--number", type="int", default=DEFAULT_NUM_OF_INSTANCES,
@@ -148,6 +148,11 @@ def list_security_groups(ec2):
                        sec_group["IpPermissions"]]))
 
 
+def list_key_pairs(ec2):
+    for key_pair in [key_pair["KeyName"] for key_pair in ec2.describe_key_pairs()["KeyPairs"]]:
+        print(key_pair)
+
+
 def execute():
     (opts, action) = parse_args()
 
@@ -168,6 +173,8 @@ def execute():
             list_availability_zones(ec2, opts)
         elif action == "list-images":
             list_images(ec2)
+        elif action == "list-keypairs":
+            list_key_pairs(ec2)
         else:
             print("'{}' not supported!".format(action))
 
