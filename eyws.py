@@ -23,7 +23,7 @@ EBS_VOLUME_TYPES = [("standard", "Magnetic"),
 
 
 def parse_args():
-    parser = OptionParser(usage="eyws-ec2 <action> [options]\n\n<action> can be:\n\t\t"
+    parser = OptionParser(usage="eyws <action> [options]\n\n<action> can be:\n\t\t"
                                 "create-instances\n\t\t"
                                 "stop-instances\n\t\t"
                                 "terminate-instances\n\t\t"
@@ -85,7 +85,7 @@ def parse_args():
                       help="Security Group name to use for launching instances")
 
     parser.add_option("--instance-id", metavar="instance Id", action="append", dest="instance_ids",
-                      help="instance ids to star/stop/destroy")
+                      help="instance ids to start/stop/destroy")
 
     parser.add_option("--dry-run", action="store_true", help="Dry run operations")
 
