@@ -46,7 +46,7 @@ def parse_args():
     parser.add_option("-h", "--help", action="help",
                       help="Show this help message and exit")
 
-    parser.add_option("-p", "--profile", help="aws profile (~/.aws/config) (default=default profile)")
+    parser.add_option("-p", "--profile", help="aws profile to use (~/.aws/config) (default=default profile)")
 
     parser.add_option("-c", "--count", metavar="Instance Count", type="int", default=DEFAULT_NUM_OF_INSTANCES,
                       help="Number of instances to launch (default={})".format(DEFAULT_NUM_OF_INSTANCES))
