@@ -3,6 +3,10 @@ from optparse import OptionParser
 
 import boto3
 from botocore.exceptions import ClientError
+from collections import defaultdict
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 VERSION = "1.0.0"
 UBUNTU_AMI = "ami-de8fb135"  # Ubuntu Server 16.04 LTS SSD
@@ -14,6 +18,7 @@ DEFAULT_EBS_VOLUME_SIZE = 8
 DEFAULT_EBS_VOLUME_TYPE = "gp2"
 DEFAULT_EBS_DELETE_ON_TERMINATION = True
 DEFAULT_EBS_VOLUME_NAME = "/dev/sda1"
+DEFAULT_NUM_OF_MONTHS_TO_CHECK_COST = 1  # current month
 
 EBS_VOLUME_TYPES = [("standard", "Magnetic"),
                     ("io1", "Provisioned IOPS SSD"),
@@ -32,12 +37,15 @@ def parse_args():
                                 "list-regions\n\t\t"
                                 "list-images\n\t\t"
                                 "list-sec-groups\n\t\t"
+                                "list-costs\n\t\t"
                                 "list-key-pairs",
                           version="%prog {}".format(VERSION),
                           add_help_option=False)
 
     parser.add_option("-h", "--help", action="help",
                       help="Show this help message and exit")
+
+    parser.add_option("-p", "--profile", help="aws profile (~/.aws/config) (default=default profile)")
 
     parser.add_option("-c", "--count", metavar="Instance Count", type="int", default=DEFAULT_NUM_OF_INSTANCES,
                       help="Number of instances to launch (default={})".format(DEFAULT_NUM_OF_INSTANCES))
@@ -87,6 +95,14 @@ def parse_args():
     parser.add_option("--instance-id", metavar="instance Id", action="append", dest="instance_ids",
                       help="instance ids to start/stop/destroy")
 
+    parser.add_option("--days", type="int", help="Usage cost charged since <days> days")
+
+    parser.add_option("--months", help="Months to check costs for. 1 means current month. (default=1)",
+                      type="int", default=DEFAULT_NUM_OF_MONTHS_TO_CHECK_COST)
+
+    parser.add_option("--ignore-service-usage", action="store_true",
+                      help="Do not display costs for each service type")
+
     parser.add_option("--dry-run", action="store_true", help="Dry run operations")
 
     (opts, args) = parser.parse_args()
@@ -100,7 +116,7 @@ def parse_args():
     return opts, action
 
 
-def list_instances(ec2, opts):
+def list_instances(ec2):
     for res in ec2.describe_instances()["Reservations"]:
         for instance in res["Instances"]:
             print("instanceId = {}\n"
@@ -129,13 +145,14 @@ def list_instances(ec2, opts):
                                                     instance["Monitoring"]["State"],
                                                     instance["Placement"]["AvailabilityZone"],
                                                     instance["PrivateDnsName"],
-                                                    instance["PrivateIpAddress"],
+                                                    instance[
+                                                        "PrivateIpAddress"] if "PrivateIpAddress" in instance else "",
                                                     instance["PublicDnsName"],
-                                                    "" if instance["State"]["Name"] == "stopped" else instance[
-                                                        "PublicIpAddress"],
-                                                    instance["SubnetId"],
-                                                    instance["VpcId"],
-                                                    instance["Tags"],
+                                                    instance[
+                                                        "PublicIpAddress"] if "PublicIpAddress" in instance else "",
+                                                    instance["SubnetId"] if "SubnetId" in instance else "",
+                                                    instance["VpcId"] if "VpcId" in instance else "",
+                                                    instance["Tags"] if "Tags" in instance else "",
                                                     instance["CpuOptions"]["CoreCount"],
                                                     instance["CpuOptions"]["ThreadsPerCore"],
                                                     instance["SecurityGroups"]))
@@ -306,6 +323,10 @@ def list_opts(opts):
     print("deleteTerm={}".format(opts.ebs_delete_on_term))
     print("volName={}".format(opts.ebs_vol_name))
     print("instanceids={}".format(opts.instance_ids))
+    print("days={}".format(opts.days))
+    print("months={}".format(opts.months))
+    print("profile={}".format(opts.profile))
+    print("ignore-service-usage={}".format(opts.ignore_service_usage))
 
 
 def stop_instances(ec2, opts):
@@ -349,6 +370,93 @@ def start_instances(ec2, opts):
                                                                             instance_info[2]))
 
 
+def list_costs(ce, opts):
+    if opts.days:
+        start = datetime.now() - relativedelta(days=opts.days)
+    else:
+        start = datetime.today().replace(day=1)
+        if opts.months > 1:
+            start = start - relativedelta(months=opts.months - 1)
+
+    start = start.strftime("%Y-%m-%d")
+    end = datetime.now().strftime("%Y-%m-%d")
+
+    account_map = get_account_names(ce, start, end)
+
+    # ignore service details if --ignore-service-usage set
+    if opts.ignore_service_usage:
+        group_by = [
+            {
+                "Type": "DIMENSION",
+                "Key": "LINKED_ACCOUNT"
+            }
+        ]
+    else:
+        group_by = [
+            {
+                "Type": "DIMENSION",
+                "Key": "LINKED_ACCOUNT"
+            }, {
+                "Type": "DIMENSION",
+                "Key": "SERVICE"
+            }
+        ]
+
+    resp = ce.get_cost_and_usage(
+        TimePeriod={
+            "Start": start,
+            "End": end
+        },
+        Granularity="MONTHLY",
+        Metrics=["BlendedCost"],
+        GroupBy=group_by
+    )
+
+    # prepare cost data
+    costs = []
+    for period in resp["ResultsByTime"]:
+
+        month = datetime.strptime(period["TimePeriod"]["Start"], "%Y-%m-%d").strftime("%B %Y") \
+            if not opts.days else period["TimePeriod"]["Start"]
+
+        periodic_cost_info = PeriodicCosts(month)
+
+        for service_usage in period["Groups"]:
+
+            value = Decimal(service_usage["Metrics"]["BlendedCost"]["Amount"])
+
+            if value != 0:
+                account = account_map[service_usage["Keys"][0]]
+                service = service_usage["Keys"][1] if not opts.ignore_service_usage else None
+                unit = service_usage["Metrics"]["BlendedCost"]["Unit"]
+
+                periodic_cost_info.add_cost(ServiceUsageCost(account,
+                                                             service,
+                                                             value.quantize(Decimal(".01"), rounding=ROUND_HALF_UP),
+                                                             unit))
+        costs.append(periodic_cost_info)
+
+        # display
+        for periodic_cost in costs:
+            periodic_cost.prettify()
+
+
+def get_account_names(ce, start, end):
+    resp = ce.get_dimension_values(
+        TimePeriod={
+            "Start": start,
+            "End": end
+        },
+        Dimension="LINKED_ACCOUNT"
+    )
+
+    account_map = {}
+    for account_info in resp["DimensionValues"]:
+        account_map[account_info["Value"]] = account_info["Attributes"]["description"]
+
+    return account_map
+
+
 def execute():
     (opts, action) = parse_args()
 
@@ -356,14 +464,17 @@ def execute():
 
     try:
 
-        ec2 = boto3.client("ec2", region_name=opts.region if opts.region else None)
+        session = boto3.Session(profile_name=opts.profile if opts.profile else None,
+                                region_name=opts.region if opts.region else None)
+
+        ec2 = session.client("ec2")
 
         if action == "create-instances":
             create_instances(ec2, opts)
         elif action == "list-sec-groups":
             list_security_groups(ec2)
         elif action == "list-instances":
-            list_instances(ec2, opts)
+            list_instances(ec2)
         elif action == "list-regions":
             list_regions(ec2, opts)
         elif action == "list-zones":
@@ -378,12 +489,56 @@ def execute():
             start_instances(ec2, opts)
         elif action == "terminate-instances":
             terminate_instances(ec2, opts)
+        elif action == "list-costs":
+            list_costs(session.client("ce"), opts)
         else:
             print("'{}' not supported!".format(action))
 
     except Exception as e:
         print(e)
         sys.exit(1)
+
+
+class ServiceUsageCost:
+
+    def __init__(self, account, service_name, cost, unit) -> None:
+        self.account = account
+        self.service_name = service_name
+        self.cost = cost
+        self.unit = unit
+
+    def as_tuple(self):
+        return self.service_name, self.cost, self.unit
+
+
+class PeriodicCosts:
+
+    def __init__(self, period) -> None:
+        self.period = period
+        self.account_service_usage = defaultdict(list)
+
+    def add_cost(self, service_usage_cost: ServiceUsageCost):
+        self.account_service_usage[service_usage_cost.account].append(service_usage_cost.as_tuple())
+
+    def get_total(self):
+        total = 0
+        for account in self.account_service_usage:
+            for service_usage_cost in self.account_service_usage[account]:
+                total += service_usage_cost[1]
+        return total
+
+    def prettify(self):
+        print("\n{} - {} USD".format(self.period, self.get_total()))
+
+        for account in self.account_service_usage:
+            print("\n\t{}\n".format(account))
+            account_total = 0
+            for service_cost in self.account_service_usage[account]:
+                if service_cost[0]:
+                    print("\t\t{} {}\t{}".format(service_cost[1], service_cost[2], service_cost[0]))
+                account_total += service_cost[1]
+            print("\t\t------------")
+            print("\t\t{} USD".format(account_total))
 
 
 if __name__ == "__main__":
