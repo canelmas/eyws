@@ -19,6 +19,7 @@ DEFAULT_EBS_VOLUME_TYPE = "gp2"
 DEFAULT_EBS_DELETE_ON_TERMINATION = True
 DEFAULT_EBS_VOLUME_NAME = "/dev/sda1"
 DEFAULT_NUM_OF_MONTHS_TO_CHECK_COST = 1  # current month
+DEFAULT_COST_METRICS_TYPE = "BlendedCost"
 
 EBS_VOLUME_TYPES = [("standard", "Magnetic"),
                     ("io1", "Provisioned IOPS SSD"),
@@ -384,23 +385,14 @@ def list_costs(ce, opts):
     account_map = get_account_names(ce, start, end)
 
     # ignore service details if --ignore-service-usage set
-    if opts.ignore_service_usage:
-        group_by = [
+    group_by = [{"Type": "DIMENSION", "Key": "LINKED_ACCOUNT"}]
+
+    if not opts.ignore_service_usage:
+        group_by.append(
             {
-                "Type": "DIMENSION",
-                "Key": "LINKED_ACCOUNT"
-            }
-        ]
-    else:
-        group_by = [
-            {
-                "Type": "DIMENSION",
-                "Key": "LINKED_ACCOUNT"
-            }, {
                 "Type": "DIMENSION",
                 "Key": "SERVICE"
-            }
-        ]
+            })
 
     resp = ce.get_cost_and_usage(
         TimePeriod={
@@ -408,7 +400,7 @@ def list_costs(ce, opts):
             "End": end
         },
         Granularity="MONTHLY",
-        Metrics=["BlendedCost"],
+        Metrics=[DEFAULT_COST_METRICS_TYPE],
         GroupBy=group_by
     )
 
@@ -436,7 +428,7 @@ def list_costs(ce, opts):
                                                              unit))
         costs.append(periodic_cost_info)
 
-        # display
+        # prettify
         for periodic_cost in costs:
             periodic_cost.prettify()
 
