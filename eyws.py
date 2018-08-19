@@ -1,4 +1,8 @@
+import os
+import smtplib
 import sys
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from optparse import OptionParser
 
 import boto3
@@ -7,6 +11,7 @@ from collections import defaultdict
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal, ROUND_HALF_UP
+from jinja2 import Environment, FileSystemLoader
 
 VERSION = "1.0.0"
 UBUNTU_AMI = "ami-de8fb135"  # Ubuntu Server 16.04 LTS SSD
@@ -20,6 +25,7 @@ DEFAULT_EBS_DELETE_ON_TERMINATION = True
 DEFAULT_EBS_VOLUME_NAME = "/dev/sda1"
 DEFAULT_NUM_OF_MONTHS_TO_CHECK_COST = 1  # current month
 DEFAULT_COST_METRICS_TYPE = "BlendedCost"
+DEFAULT_COST_EMAIL_SUBJECT = "AWS Usage Costs"
 
 EBS_VOLUME_TYPES = [("standard", "Magnetic"),
                     ("io1", "Provisioned IOPS SSD"),
@@ -39,7 +45,9 @@ def parse_args():
                                 "list-images\n\t\t"
                                 "list-sec-groups\n\t\t"
                                 "list-costs\n\t\t"
-                                "list-key-pairs",
+                                "list-key-pairs\n\t\t"
+                                "list-costs\n\t\t"
+                                "email-costs",
                           version="%prog {}".format(VERSION),
                           add_help_option=False)
 
@@ -103,6 +111,17 @@ def parse_args():
 
     parser.add_option("--ignore-service-usage", action="store_true",
                       help="Do not display costs for each service type")
+
+    parser.add_option("--emails", action="append", dest="emails",
+                      help="Comma separated email addresses to send cost information")
+
+    parser.add_option("--template", help="Jinja template file")
+
+    parser.add_option("--smtp-host", help="SMTP host")
+
+    parser.add_option("--smtp-port", type="int", default=0, help="SMTP port")
+
+    parser.add_option("--smtp-from", help="Sender email address")
 
     parser.add_option("--dry-run", action="store_true", help="Dry run operations")
 
@@ -328,6 +347,8 @@ def list_opts(opts):
     print("months={}".format(opts.months))
     print("profile={}".format(opts.profile))
     print("ignore-service-usage={}".format(opts.ignore_service_usage))
+    print("emails={}".format(opts.emails))
+    print("template={}".format(opts.template))
 
 
 def stop_instances(ec2, opts):
@@ -372,6 +393,49 @@ def start_instances(ec2, opts):
 
 
 def list_costs(ce, opts):
+    for periodic_cost in get_costs(ce, opts):
+        periodic_cost.prettify()
+
+
+def send_email(host, port, sender, to, data):
+    msg = MIMEMultipart('alternative')
+
+    msg['Subject'] = DEFAULT_COST_EMAIL_SUBJECT
+    msg['To'] = ', '.join(to)
+    msg['From'] = sender
+
+    msg.attach(MIMEText(data, 'html'))
+
+    s = smtplib.SMTP(host=host, port=port)
+    s.sendmail(sender, to, msg.as_string())
+    s.quit()
+
+
+def email_costs(ce, opts):
+    if not opts.template or not os.path.isfile(opts.template):
+        raise ValueError("--template value is required. Make sure to pass a valid existing file.")
+
+    if not opts.emails or not opts.smtp_host or not opts.smtp_from:
+        raise ValueError("--emails, --smtp-host and --smtp-from are required for sending email")
+
+    # get costs
+    costs = get_costs(ce, opts)
+
+    # render template
+    template_dir = os.path.abspath(os.path.join(
+        os.path.join(os.path.abspath(os.path.dirname(__file__)), opts.template), ".."))
+
+    j2_env = Environment(loader=FileSystemLoader(template_dir))
+
+    template = j2_env.get_template(os.path.basename(opts.template))
+
+    rendered_text = template.render(costs=costs)
+
+    # send email
+    send_email(opts.smtp_host, opts.smtp_port, opts.smtp_from, opts.emails, rendered_text)
+
+
+def get_costs(ce, opts):
     if opts.days:
         start = datetime.now() - relativedelta(days=opts.days)
     else:
@@ -384,7 +448,7 @@ def list_costs(ce, opts):
 
     account_map = get_account_names(ce, start, end)
 
-    # ignore service details if --ignore-service-usage set
+    # ignore service details if --ignore-service-usage is set
     group_by = [{"Type": "DIMENSION", "Key": "LINKED_ACCOUNT"}]
 
     if not opts.ignore_service_usage:
@@ -405,7 +469,7 @@ def list_costs(ce, opts):
     )
 
     # prepare cost data
-    costs = []
+    costs = []  # type: List[PeriodicCosts]
     for period in resp["ResultsByTime"]:
 
         month = datetime.strptime(period["TimePeriod"]["Start"], "%Y-%m-%d").strftime("%B %Y") \
@@ -428,9 +492,7 @@ def list_costs(ce, opts):
                                                              unit))
         costs.append(periodic_cost_info)
 
-        # prettify
-        for periodic_cost in costs:
-            periodic_cost.prettify()
+    return costs
 
 
 def get_account_names(ce, start, end):
@@ -452,7 +514,7 @@ def get_account_names(ce, start, end):
 def execute():
     (opts, action) = parse_args()
 
-    list_opts(opts)
+    # list_opts(opts)
 
     try:
 
@@ -483,6 +545,8 @@ def execute():
             terminate_instances(ec2, opts)
         elif action == "list-costs":
             list_costs(session.client("ce"), opts)
+        elif action == "email-costs":
+            email_costs(session.client("ce"), opts)
         else:
             print("'{}' not supported!".format(action))
 
@@ -493,7 +557,7 @@ def execute():
 
 class ServiceUsageCost:
 
-    def __init__(self, account, service_name, cost, unit) -> None:
+    def __init__(self, account, service_name, cost: Decimal, unit) -> None:
         self.account = account
         self.service_name = service_name
         self.cost = cost
@@ -508,29 +572,27 @@ class PeriodicCosts:
     def __init__(self, period) -> None:
         self.period = period
         self.account_service_usage = defaultdict(list)
+        self.total = 0
+        self.account_total = {}
 
     def add_cost(self, service_usage_cost: ServiceUsageCost):
         self.account_service_usage[service_usage_cost.account].append(service_usage_cost.as_tuple())
+        self.total += service_usage_cost.cost
 
-    def get_total(self):
-        total = 0
-        for account in self.account_service_usage:
-            for service_usage_cost in self.account_service_usage[account]:
-                total += service_usage_cost[1]
-        return total
+        self.account_total[service_usage_cost.account] = service_usage_cost.cost \
+            if service_usage_cost.account not in self.account_total else \
+            self.account_total[service_usage_cost.account] + service_usage_cost.cost
 
     def prettify(self):
-        print("\n{} - {} USD".format(self.period, self.get_total()))
+        print("\n{} - {} USD".format(self.period, self.total))
 
         for account in self.account_service_usage:
             print("\n\t{}\n".format(account))
-            account_total = 0
             for service_cost in self.account_service_usage[account]:
                 if service_cost[0]:
                     print("\t\t{} {}\t{}".format(service_cost[1], service_cost[2], service_cost[0]))
-                account_total += service_cost[1]
             print("\t\t------------")
-            print("\t\t{} USD".format(account_total))
+            print("\t\t{} USD".format(self.account_total[account]))
 
 
 if __name__ == "__main__":
