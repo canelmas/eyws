@@ -217,8 +217,7 @@ def list_images(ec2):
             'Values': ['true']
         }]
 
-    for image_info in [(image["Name"], image["ImageId"]) for image in
-                       ec2.describe_images(Filters=filters)["Images"]]:
+    for image_info in [(image["Name"], image["ImageId"]) for image in ec2.describe_images(Filters=filters)["Images"]]:
         print(image_info)
 
 
