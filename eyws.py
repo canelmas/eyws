@@ -468,7 +468,7 @@ def get_costs(ce, opts):
     )
 
     # prepare cost data
-    costs = []  # type: List[PeriodicCosts]
+    costs_by_periods = []  # type: List[PeriodicCosts]
     for period in resp["ResultsByTime"]:
 
         month = datetime.strptime(period["TimePeriod"]["Start"], "%Y-%m-%d").strftime("%B %Y") \
@@ -489,9 +489,11 @@ def get_costs(ce, opts):
                                                              service,
                                                              value.quantize(Decimal(".01"), rounding=ROUND_HALF_UP),
                                                              unit))
-        costs.append(periodic_cost_info)
-
-    return costs
+        # sort usage costs by account
+        periodic_cost_info.account_service_usage = sorted(periodic_cost_info.account_service_usage.items())
+        costs_by_periods.append(periodic_cost_info)
+        
+    return costs_by_periods
 
 
 def get_account_names(ce, start, end):
@@ -570,7 +572,7 @@ class PeriodicCosts:
 
     def __init__(self, period) -> None:
         self.period = period
-        self.account_service_usage = defaultdict(list)
+        self.account_service_usage = defaultdict(list)  # after sort => [ ("account XYZ", [(), (), ()]), (...) ]
         self.total = 0
         self.account_total = {}
 
@@ -585,13 +587,14 @@ class PeriodicCosts:
     def prettify(self):
         print("\n{} - {} USD".format(self.period, self.total))
 
-        for account in self.account_service_usage:
+        for account, costs in self.account_service_usage:
             print("\n\t{}\n".format(account))
-            for service_cost in self.account_service_usage[account]:
+            for service_cost in costs:
                 if service_cost[0]:
                     print("\t\t{} {}\t{}".format(service_cost[1], service_cost[2], service_cost[0]))
             print("\t\t------------")
             print("\t\t{} USD".format(self.account_total[account]))
+        print(self.account_service_usage)
 
 
 if __name__ == "__main__":

@@ -14,15 +14,15 @@
 		<td colspan="3" style="height:10px; background-color:#FF9633;"></td>
     </tr>
 
-    {% for cost_info in costs %}
+    {% for periodic_cost_info in costs %}
         <!-- Period -->
       <tr>
-        <td style="padding:10px;font-weight:600; border-left:solid #bebebe 1px">{{ cost_info.period }}</td>
-        <td style="padding:10px; font-weight:900; border-right:solid #bebebe 1px" align="right">{{ cost_info.total }}$</td>
+        <td style="padding:10px;font-weight:600; border-left:solid #bebebe 1px">{{ periodic_cost_info.period }}</td>
+        <td style="padding:10px; font-weight:900; border-right:solid #bebebe 1px" align="right">{{ periodic_cost_info.total }}$</td>
       </tr>
 
     <!-- account -->
-    {% for account in cost_info.account_service_usage %}
+    {% for account, costs in periodic_cost_info.account_service_usage %}
       <tr>
         <td colspan="2" bgcolor="#FBFBEF " style="padding:10px 10px; border-left:solid #bebebe 1px; border-right:solid #bebebe 1px">
             <table border="0" style="margin-bottom:10px; ;width:100%" >
@@ -36,7 +36,7 @@
                   </tr>
 
                   <!-- Service Usage Costs -->
-                  {% for service_usage in cost_info.account_service_usage[account] %}
+                  {% for service_usage in costs %}
                     <tr>
                     <td style="padding-right:14px">{{ service_usage[0] }}</td>
                     <td align="right">{{ service_usage[1] }}$</td>
@@ -49,7 +49,7 @@
                   </tr>
                   <tr>
                     <td>Total</td>
-                    <td align="right" style="font-weight:600">{{ cost_info.account_total[account] }}$</td>
+                    <td align="right" style="font-weight:600">{{ periodic_cost_info.account_total[account] }}$</td>
                   </tr>
                 </tbody>
             </table>
