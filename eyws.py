@@ -492,7 +492,7 @@ def get_costs(ce, opts):
         # sort usage costs by account
         periodic_cost_info.account_service_usage = sorted(periodic_cost_info.account_service_usage.items())
         costs_by_periods.append(periodic_cost_info)
-        
+
     return costs_by_periods
 
 
