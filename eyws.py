@@ -436,14 +436,18 @@ def email_costs(ce, opts):
 
 def get_costs(ce, opts):
     if opts.days:
-        start = datetime.now() - relativedelta(days=opts.days)
+        start = datetime.now() - relativedelta(days=opts.days)  # show usage costs starting from X days ago
     else:
-        start = datetime.today().replace(day=1)
-        if opts.months > 1:
+        start = datetime.today().replace(day=1)  # first day of the current month for starting date
+        if opts.months > 1:  # set starting date to X months back
             start = start - relativedelta(months=opts.months - 1)
+        elif datetime.now().date() == start.date():
+            # --months is set to 1 and it's the first day of the month, show past month's usage costs
+            start = start - relativedelta(months=1)
+            pass
 
     start = start.strftime("%Y-%m-%d")
-    end = datetime.now().strftime("%Y-%m-%d")
+    end = datetime.now().strftime("%Y-%m-%d")  # end time is always now i.e. date range selection not supported
 
     account_map = get_account_names(ce, start, end)
 
@@ -480,8 +484,16 @@ def get_costs(ce, opts):
         if not token:
             break
 
+    # desc sort by start time
+    try:
+        periods.sort(key=lambda json: json["TimePeriod"]["Start"], reverse=True)
+    except KeyError as e:
+        # do not sort then
+        pass
+
     # prepare cost data
     costs_by_periods = []  # type: List[PeriodicCosts]
+
     for period in periods:
 
         month = datetime.strptime(period["TimePeriod"]["Start"], "%Y-%m-%d").strftime("%B %Y") \
@@ -506,6 +518,8 @@ def get_costs(ce, opts):
         periodic_cost_info.account_service_usage = sorted(periodic_cost_info.account_service_usage.items())
         costs_by_periods.append(periodic_cost_info)
 
+    # print(start)
+    # print(end)
     return costs_by_periods
 
 
