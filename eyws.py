@@ -457,19 +457,32 @@ def get_costs(ce, opts):
                 "Key": "SERVICE"
             })
 
-    resp = ce.get_cost_and_usage(
-        TimePeriod={
-            "Start": start,
-            "End": end
-        },
-        Granularity="MONTHLY",
-        Metrics=[DEFAULT_COST_METRICS_TYPE],
-        GroupBy=group_by
-    )
+    periods = []
+    token = None
+    while True:
+        if token:
+            kwargs = {'NextPageToken': token}
+        else:
+            kwargs = {}
+
+        resp = ce.get_cost_and_usage(
+            TimePeriod={
+                "Start": start,
+                "End": end
+            },
+            Granularity="MONTHLY",
+            Metrics=[DEFAULT_COST_METRICS_TYPE],
+            GroupBy=group_by,
+            **kwargs)
+
+        periods += resp['ResultsByTime']
+        token = resp.get('NextPageToken')
+        if not token:
+            break
 
     # prepare cost data
     costs_by_periods = []  # type: List[PeriodicCosts]
-    for period in resp["ResultsByTime"]:
+    for period in periods:
 
         month = datetime.strptime(period["TimePeriod"]["Start"], "%Y-%m-%d").strftime("%B %Y") \
             if not opts.days else period["TimePeriod"]["Start"]
@@ -572,7 +585,7 @@ class PeriodicCosts:
 
     def __init__(self, period) -> None:
         self.period = period
-        self.account_service_usage = defaultdict(list)  # after sort => [ ("account XYZ", [(), (), ()]), (...) ]
+        self.account_service_usage = defaultdict(list)  # after sorting => [ ("account XYZ", [(), (), ()]), (...) ]
         self.total = 0
         self.account_total = {}
 
@@ -594,7 +607,6 @@ class PeriodicCosts:
                     print("\t\t{} {}\t{}".format(service_cost[1], service_cost[2], service_cost[0]))
             print("\t\t------------")
             print("\t\t{} USD".format(self.account_total[account]))
-        print(self.account_service_usage)
 
 
 if __name__ == "__main__":
