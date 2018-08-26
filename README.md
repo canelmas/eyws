@@ -7,7 +7,7 @@ It basically provides functionalities that I need frequently in a daily basis.
 ## Todo
 
 * Provision Docker
-* Start/Stop Spark Cluster
+* Provision and manage a Spark cluster
 
 ## Install
 ```bash
