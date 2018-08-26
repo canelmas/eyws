@@ -2,6 +2,13 @@
 
 An alternate easy to use AWS cli.
 
+It basically provides functionalities that I need frequently in a daily basis.
+
+## Todo
+
+* Provision Docker
+* Start/Stop Spark Cluster
+
 ## Install
 ```bash
 pip install eyws
