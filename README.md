@@ -3,7 +3,9 @@
 An alternate easy to use AWS cli.
 
 ## Install
+```bash
 pip install eyws
+```
 
 ## Usage
 ```bash
