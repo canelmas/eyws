@@ -1,0 +1,7 @@
+__name__ = "eyws"
+__version__ = "1.0.0b1"
+__author__ = "Can Elmas"
+__email__ = "canelm@gmail.com"
+__license__ = "Apache License 2.0"
+__description__ = "Alternate AWS CLI"
+__url__ = "https://github.com/canelmas/aws-scripts"

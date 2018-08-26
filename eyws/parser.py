@@ -1,3 +1,17 @@
+# Copyright 2018 Can Elmas
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#    http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import smtplib
 import sys
@@ -12,8 +26,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal, ROUND_HALF_UP
 from jinja2 import Environment, FileSystemLoader
+from eyws import __version__
 
-VERSION = "1.0.0"
 UBUNTU_AMI = "ami-de8fb135"  # Ubuntu Server 16.04 LTS SSD
 DEFAULT_AMI = UBUNTU_AMI
 DEFAULT_NUM_OF_INSTANCES = 1
@@ -48,7 +62,7 @@ def parse_args():
                                 "list-key-pairs\n\t\t"
                                 "list-costs\n\t\t"
                                 "email-costs",
-                          version="%prog {}".format(VERSION),
+                          version="%prog-{}".format(__version__),
                           add_help_option=False)
 
     parser.add_option("-h", "--help", action="help",
@@ -156,29 +170,28 @@ def list_instances(ec2):
                   "tags = {}\n"
                   "core-count = {}\n"
                   "thread-per-core = {}\n"
-                  "security-groups = {}\n\n".format(instance["InstanceId"],
-                                                    instance["ImageId"],
-                                                    instance["State"]["Name"],
-                                                    instance["StateTransitionReason"],
-                                                    instance["InstanceType"],
-                                                    instance["KeyName"],
-                                                    instance["Monitoring"]["State"],
-                                                    instance["Placement"]["AvailabilityZone"],
-                                                    instance["PrivateDnsName"],
-                                                    instance[
-                                                        "PrivateIpAddress"] if "PrivateIpAddress" in instance else "",
-                                                    instance["PublicDnsName"],
-                                                    instance[
-                                                        "PublicIpAddress"] if "PublicIpAddress" in instance else "",
-                                                    instance["SubnetId"] if "SubnetId" in instance else "",
-                                                    instance["VpcId"] if "VpcId" in instance else "",
-                                                    instance["Tags"] if "Tags" in instance else "",
-                                                    instance["CpuOptions"]["CoreCount"],
-                                                    instance["CpuOptions"]["ThreadsPerCore"],
-                                                    instance["SecurityGroups"]))
+                  "security-groups = {}\n\n"
+                  .format(instance["InstanceId"],
+                          instance["ImageId"],
+                          instance["State"]["Name"],
+                          instance["StateTransitionReason"],
+                          instance["InstanceType"],
+                          instance["KeyName"],
+                          instance["Monitoring"]["State"],
+                          instance["Placement"]["AvailabilityZone"],
+                          instance["PrivateDnsName"],
+                          instance["PrivateIpAddress"] if "PrivateIpAddress" in instance else "",
+                          instance["PublicDnsName"],
+                          instance["PublicIpAddress"] if "PublicIpAddress" in instance else "",
+                          instance["SubnetId"] if "SubnetId" in instance else "",
+                          instance["VpcId"] if "VpcId" in instance else "",
+                          instance["Tags"] if "Tags" in instance else "",
+                          instance["CpuOptions"]["CoreCount"],
+                          instance["CpuOptions"]["ThreadsPerCore"],
+                          instance["SecurityGroups"]))
 
 
-def list_regions(ec2, opts):
+def list_regions(ec2):
     for region in [region['RegionName'] for region in ec2.describe_regions()["Regions"]]:
         print(region)
 
@@ -558,7 +571,7 @@ def execute():
         elif action == "list-instances":
             list_instances(ec2)
         elif action == "list-regions":
-            list_regions(ec2, opts)
+            list_regions(ec2)
         elif action == "list-zones":
             list_availability_zones(ec2, opts)
         elif action == "list-images":
