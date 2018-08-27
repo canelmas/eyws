@@ -17,7 +17,7 @@ pip install eyws
 
 ## Permissions Required
 
-**list-costs** and **email-costs** require Cost Explorer Full Access for fetching usage costs.
+**list-costs** and **email-costs** require you to enable Cost Explorer first on the console and give following permissions: 
 
 ```json
 {
@@ -52,6 +52,8 @@ AWSConfigRoleForOrganizations is optional for appending organization information
     ]
 }
 ```
+
+Keep in mind that each paginated Cost Explorer API request will cost you $0.01 ([Learn more](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/cost-explorer-what-is.html)).
 
 **list-instances**, **list-zones**, **list-regions**, **list-images**, **list-key-pairs**, **list-sec-groups** require:
 
@@ -142,9 +144,9 @@ Options:
                         information
   --template=TEMPLATE   Jinja template file
   --smtp-host=SMTP_HOST
-                        SMTP host
+                        SMTP host to use for sending emails
   --smtp-port=SMTP_PORT
-                        SMTP port
+                        SMTP port to use for sending emails
   --smtp-from=SMTP_FROM
                         Sender email address
   --dry-run             Dry run operations
