@@ -4,12 +4,6 @@ An alternate easy to use AWS cli, for some specific jobs.
 
 It basically provides functions that I need frequently.
 
-## Todo
-
-* Provision Docker
-* Provision and manage a Spark cluster
-* --format
-
 ## Install
 ```bash
 pip install eyws
@@ -151,3 +145,9 @@ Options:
                         Sender email address
   --dry-run             Dry run operations
 ```
+
+## Todo
+
+* Provision Docker
+* Provision and manage a Spark cluster
+* --format
