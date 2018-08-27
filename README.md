@@ -1,17 +1,79 @@
 ## What?
 
-An alternate easy to use AWS cli.
+An alternate easy to use AWS cli, for some specific jobs.
 
-It basically provides functionalities that I need frequently in a daily basis.
+It basically provides functions that I need frequently.
 
 ## Todo
 
 * Provision Docker
 * Provision and manage a Spark cluster
+* --format
 
 ## Install
 ```bash
 pip install eyws
+```
+
+## Permissions Required
+
+**list-costs** and **email-costs** require Cost Explorer Full Access for fetching usage costs.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ce:GetReservationUtilization",
+                "ce:GetDimensionValues",
+                "ce:GetCostAndUsage",
+                "ce:GetTags"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+``` 
+AWSConfigRoleForOrganizations is optional for appending organization information to usage costs.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": "organizations:DescribeOrganization",
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+**list-instances**, **list-zones**, **list-regions**, **list-images**, **list-key-pairs**, **list-sec-groups** require:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeInstances",
+                "ec2:DescribeAvailabilityZones",
+                "ec2:DescribeRegions",
+                "ec2:DescribeImages",                                                
+                "ec2:DescribeKeyPairs",
+                "ec2:DescribeSecurityGroups"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
 ```
 
 ## Usage
