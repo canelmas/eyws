@@ -131,9 +131,9 @@ def parse_args():
 
     parser.add_option("--template", help="Jinja template file")
 
-    parser.add_option("--smtp-host", help="SMTP host")
+    parser.add_option("--smtp-host", help="SMTP host to use for sending emails")
 
-    parser.add_option("--smtp-port", type="int", default=0, help="SMTP port")
+    parser.add_option("--smtp-port", type="int", default=0, help="SMTP port to use for sending emails")
 
     parser.add_option("--smtp-from", help="Sender email address")
 
@@ -404,15 +404,30 @@ def start_instances(ec2, opts):
                                                                             instance_info[2]))
 
 
-def list_costs(ce, opts):
+def get_organization_info(client_org):
+    try:
+        org_info = client_org.describe_organization()
+    except ClientError as e:
+        if e.response["Error"]["Code"] in ["AWSOrganizationsNotInUseException", "AccessDeniedException"]:
+            return None
+    else:
+        return [org_info["Organization"]["Id"], org_info["Organization"]["MasterAccountEmail"]]
+
+
+def list_costs(ce, org, opts):
+    org_info = get_organization_info(org)
+
+    if org_info is not None:
+        print("Organization Id = {}\nOrganization Master Account = {}".format(org_info[0], org_info[1]))
+
     for periodic_cost in get_costs(ce, opts):
         periodic_cost.prettify()
 
 
-def send_email(host, port, sender, to, data):
+def send_email(host, port, sender, to, data, subject):
     msg = MIMEMultipart('alternative')
 
-    msg['Subject'] = DEFAULT_COST_EMAIL_SUBJECT
+    msg['Subject'] = subject
     msg['To'] = ', '.join(to)
     msg['From'] = sender
 
@@ -423,7 +438,7 @@ def send_email(host, port, sender, to, data):
     s.quit()
 
 
-def email_costs(ce, opts):
+def email_costs(ce, org, opts):
     if not opts.template or not os.path.isfile(opts.template):
         raise ValueError("--template value is required. Make sure to pass a valid existing file.")
 
@@ -433,6 +448,9 @@ def email_costs(ce, opts):
     # get costs
     costs = get_costs(ce, opts)
 
+    # organization info
+    org_info = get_organization_info(org)
+
     # render template
     template_dir = os.path.abspath(os.path.join(
         os.path.join(os.path.abspath(os.path.dirname(__file__)), opts.template), ".."))
@@ -441,10 +459,15 @@ def email_costs(ce, opts):
 
     template = j2_env.get_template(os.path.basename(opts.template))
 
-    rendered_text = template.render(costs=costs)
+    rendered_text = template.render(costs=costs, organization=org_info)
 
     # send email
-    send_email(opts.smtp_host, opts.smtp_port, opts.smtp_from, opts.emails, rendered_text)
+    send_email(opts.smtp_host,
+               opts.smtp_port,
+               opts.smtp_from,
+               opts.emails,
+               rendered_text,
+               DEFAULT_COST_EMAIL_SUBJECT if not org_info else "{} for {}".format(DEFAULT_COST_EMAIL_SUBJECT, org_info[1]))
 
 
 def get_costs(ce, opts):
@@ -500,7 +523,7 @@ def get_costs(ce, opts):
     # desc sort by start time
     try:
         periods.sort(key=lambda json: json["TimePeriod"]["Start"], reverse=True)
-    except KeyError as e:
+    except KeyError:
         # do not sort then
         pass
 
@@ -531,8 +554,6 @@ def get_costs(ce, opts):
         periodic_cost_info.account_service_usage = sorted(periodic_cost_info.account_service_usage.items())
         costs_by_periods.append(periodic_cost_info)
 
-    # print(start)
-    # print(end)
     return costs_by_periods
 
 
@@ -585,9 +606,9 @@ def execute():
         elif action == "terminate-instances":
             terminate_instances(ec2, opts)
         elif action == "list-costs":
-            list_costs(session.client("ce"), opts)
+            list_costs(session.client("ce"), session.client("organizations"), opts)
         elif action == "email-costs":
-            email_costs(session.client("ce"), opts)
+            email_costs(session.client("ce"), session.client("organizations"), opts)
         else:
             print("'{}' not supported!".format(action))
 
