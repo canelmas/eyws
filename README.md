@@ -89,6 +89,7 @@ Usage: eyws <action> [options]
 		list-key-pairs
 		list-costs
 		email-costs
+		install-docker
 
 Options:
   --version             show program's version number and exit
@@ -100,8 +101,6 @@ Options:
                         Number of instances to launch (default=1)
   -n Name Tag, --name=Name Tag
                         Append a name tag to instances
-  -w WAIT, --wait=WAIT  Number of seconds to wait for nodes to start
-                        (default=120)
   -t Instance Type, --instance-type=Instance Type
                         Type of instances to launch (default=t2.micro)
   -r Region, --region=Region
@@ -110,8 +109,11 @@ Options:
   -z Zone, --zone=Zone  Availability zone to list and launch instances in
                         (default=random when launching instances)
   -a Ami, --ami=Ami     AMI ID to use (default=ami-de8fb135)
-  -k Key Pair, --key-pair=Key Pair
-                        Key pair to use on instances
+  -k KEY_PAIR, --key-pair=KEY_PAIR
+                        Key pair name to use on instances
+  -i IDENTITY, --identity=IDENTITY
+                        SSH private key file to connect to instances
+  -u USER, --user=USER  SSH user to connect as to instances
   -e Size, --ebs-vol-size=Size
                         EBS volume size in GB to attach each instance
                         (default=8)
@@ -128,14 +130,14 @@ Options:
   -s Security Group Name, --sec-group=Security Group Name
                         Security Group name to use for launching instances
   --instance-id=instance Id
-                        instance ids to start/stop/destroy
+                        instance id to start/stop/destroy/install
   --days=DAYS           Usage cost charged since <days> days
   --months=MONTHS       Months to check costs for. 1 means current month.
                         (default=1)
   --ignore-service-usage
                         Do not display costs for each service type
-  --emails=EMAILS       Comma separated email addresses to send cost
-                        information
+  --emails=EMAILS       Comma separated email addresses to notify i.e.
+                        can@x.com, b@y.com
   --template=TEMPLATE   Jinja template file
   --smtp-host=SMTP_HOST
                         SMTP host to use for sending emails
@@ -144,10 +146,12 @@ Options:
   --smtp-from=SMTP_FROM
                         Sender email address
   --dry-run             Dry run operations
+  --install-docker      Install Docker on instances
+  --do-not-wait         Do not wait until instances are fully up and running
 ```
 
 ## Todo
 
-* Provision Docker
-* Provision and manage a Spark cluster
-* --format
+* Provision Docker [+]
+* Provision and manage a Spark cluster [-]
+* --format [-]
