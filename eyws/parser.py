@@ -15,18 +15,21 @@
 import os
 import smtplib
 import sys
+import time
+from collections import defaultdict
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from optparse import OptionParser
 
 import boto3
 from botocore.exceptions import ClientError
-from collections import defaultdict
-from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from decimal import Decimal, ROUND_HALF_UP
 from jinja2 import Environment, FileSystemLoader
+
 from eyws import __version__
+from eyws.docker import install_docker
 
 UBUNTU_AMI = "ami-de8fb135"  # Ubuntu Server 16.04 LTS SSD
 DEFAULT_AMI = UBUNTU_AMI
@@ -61,7 +64,8 @@ def parse_args():
                                 "list-costs\n\t\t"
                                 "list-key-pairs\n\t\t"
                                 "list-costs\n\t\t"
-                                "email-costs",
+                                "email-costs\n\t\t"
+                                "install-docker",
                           version="%prog-{}".format(__version__),
                           add_help_option=False)
 
@@ -73,11 +77,7 @@ def parse_args():
     parser.add_option("-c", "--count", metavar="Instance Count", type="int", default=DEFAULT_NUM_OF_INSTANCES,
                       help="Number of instances to launch (default={})".format(DEFAULT_NUM_OF_INSTANCES))
 
-    parser.add_option("-n", "--name", metavar="Name Tag", dest="name_tag", default="",
-                      help="Append a name tag to instances")
-
-    parser.add_option("-w", "--wait", type="int", default=120,
-                      help="Number of seconds to wait for nodes to start (default=120)")
+    parser.add_option("-n", "--name", metavar="Name Tag", dest="name_tag", help="Append a name tag to instances")
 
     parser.add_option("-t", "--instance-type", metavar="Instance Type", default=DEFAULT_INSTANCE_TYPE,
                       help="Type of instances to launch (default={})".format(DEFAULT_INSTANCE_TYPE))
@@ -91,8 +91,11 @@ def parse_args():
     parser.add_option("-a", "--ami", metavar="Ami", default=DEFAULT_AMI,
                       help="AMI ID to use (default={})".format(DEFAULT_AMI))
 
-    parser.add_option("-k", "--key-pair", metavar="Key Pair",
-                      help="Key pair to use on instances")
+    parser.add_option("-k", "--key-pair", help="Key pair name to use on instances")
+
+    parser.add_option("-i", "--identity", help="SSH private key file to connect to instances")
+
+    parser.add_option("-u", "--user", help="SSH user to connect as to instances")
 
     parser.add_option("-e", "--ebs-vol-size", dest="ebs_vol_size", metavar="Size", type="int",
                       default=DEFAULT_EBS_VOLUME_SIZE,
@@ -116,7 +119,7 @@ def parse_args():
                       help="Security Group name to use for launching instances")
 
     parser.add_option("--instance-id", metavar="instance Id", action="append", dest="instance_ids",
-                      help="instance ids to start/stop/destroy")
+                      help="instance id to start/stop/destroy/install")
 
     parser.add_option("--days", type="int", help="Usage cost charged since <days> days")
 
@@ -127,7 +130,7 @@ def parse_args():
                       help="Do not display costs for each service type")
 
     parser.add_option("--emails", action="append", dest="emails",
-                      help="Comma separated email addresses to send cost information")
+                      help="Comma separated email addresses to notify i.e. can@x.com, b@y.com")
 
     parser.add_option("--template", help="Jinja template file")
 
@@ -137,58 +140,76 @@ def parse_args():
 
     parser.add_option("--smtp-from", help="Sender email address")
 
-    parser.add_option("--dry-run", action="store_true", help="Dry run operations")
+    parser.add_option("--dry-run", action="store_true", help="Dry run operations", default=False)
+
+    parser.add_option("--install-docker", action="store_true", help="Install Docker on instances", default=False)
+
+    parser.add_option("--do-not-wait", action="store_false", dest="wait",
+                      help="Do not wait until instances are fully up and running",
+                      default=True)
 
     (opts, args) = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()
-        sys.exit(1)
+        error()
 
     (action) = args[0]
 
     return opts, action
 
 
+def describe_all_instances(ec2):
+    return ec2.describe_instances()
+
+
+def describe_instances(ec2, instance_ids: list):
+    return ec2.describe_instances(InstanceIds=instance_ids)
+
+
 def list_instances(ec2):
-    for res in ec2.describe_instances()["Reservations"]:
+    for res in describe_all_instances(ec2)["Reservations"]:
         for instance in res["Instances"]:
-            print("instanceId = {}\n"
-                  "imageId = {}\n"
-                  "state = {}\n"
-                  "state-message = {}\n"
-                  "type = {}\n"
-                  "keyname = {}\n"
-                  "monitoring = {}\n"
-                  "azone = {}\n"
-                  "private-dns = {}\n"
-                  "private-ip = {}\n"
-                  "public-dns = {}\n"
-                  "public-ip = {}\n"
-                  "subnet-id = {}\n"
-                  "vpc-id = {}\n"
-                  "tags = {}\n"
-                  "core-count = {}\n"
-                  "thread-per-core = {}\n"
-                  "security-groups = {}\n\n"
-                  .format(instance["InstanceId"],
-                          instance["ImageId"],
-                          instance["State"]["Name"],
-                          instance["StateTransitionReason"],
-                          instance["InstanceType"],
-                          instance["KeyName"],
-                          instance["Monitoring"]["State"],
-                          instance["Placement"]["AvailabilityZone"],
-                          instance["PrivateDnsName"],
-                          instance["PrivateIpAddress"] if "PrivateIpAddress" in instance else "",
-                          instance["PublicDnsName"],
-                          instance["PublicIpAddress"] if "PublicIpAddress" in instance else "",
-                          instance["SubnetId"] if "SubnetId" in instance else "",
-                          instance["VpcId"] if "VpcId" in instance else "",
-                          instance["Tags"] if "Tags" in instance else "",
-                          instance["CpuOptions"]["CoreCount"],
-                          instance["CpuOptions"]["ThreadsPerCore"],
-                          instance["SecurityGroups"]))
+            prettify_instance(instance)
+
+
+def prettify_instance(instance):
+    print("instanceId = {}\n"
+          "imageId = {}\n"
+          "state = {}\n"
+          "state-message = {}\n"
+          "type = {}\n"
+          "keyname = {}\n"
+          "monitoring = {}\n"
+          "azone = {}\n"
+          "private-dns = {}\n"
+          "private-ip = {}\n"
+          "public-dns = {}\n"
+          "public-ip = {}\n"
+          "subnet-id = {}\n"
+          "vpc-id = {}\n"
+          "tags = {}\n"
+          "core-count = {}\n"
+          "thread-per-core = {}\n"
+          "security-groups = {}\n"
+          .format(instance["InstanceId"],
+                  instance["ImageId"],
+                  instance["State"]["Name"],
+                  instance["StateTransitionReason"],
+                  instance["InstanceType"],
+                  instance["KeyName"],
+                  instance["Monitoring"]["State"],
+                  instance["Placement"]["AvailabilityZone"],
+                  instance["PrivateDnsName"],
+                  instance["PrivateIpAddress"] if "PrivateIpAddress" in instance else "",
+                  instance["PublicDnsName"],
+                  instance["PublicIpAddress"] if "PublicIpAddress" in instance else "",
+                  instance["SubnetId"] if "SubnetId" in instance else "",
+                  instance["VpcId"] if "VpcId" in instance else "",
+                  instance["Tags"] if "Tags" in instance else "",
+                  instance["CpuOptions"]["CoreCount"],
+                  instance["CpuOptions"]["ThreadsPerCore"],
+                  instance["SecurityGroups"]))
 
 
 def list_regions(ec2):
@@ -234,16 +255,36 @@ def list_images(ec2):
         print(image_info)
 
 
+def wait_for_instances(ec2, opts, instances, expected_state="instance_running"):
+    print("waiting for instances to reach '{}' state...".format(expected_state))
+
+    waiter = ec2.get_waiter(expected_state)
+    waiter.wait(
+        InstanceIds=[i["InstanceId"] for i in instances],
+        DryRun=bool(opts.dry_run)
+    )
+
+
 def create_instances(ec2, opts):
-    # todo : key pair must be set
+
+    if opts.key_pair is None:
+        error("Key pair name must be set (-k or --key-pair)!")
+
+    if opts.sec_group is None:
+        error("Security group name must be set (-s or --sec-group)!")
+
+    if opts.install_docker and (opts.identity is None or opts.user is None):
+        error("Identity (-i or --identity) and user (-u or --user) must be set in order to ssh and install docker!")
 
     # use existing keypair or create new one
     key = get_or_create_key_pair(ec2, opts)
+    print("using key pair '{}'...".format(key))
 
     # use existing security group or create new one
     sec_group = get_or_create_security_group(ec2, opts)
+    print("using security group '{}'...".format(sec_group))
 
-    ec2.run_instances(
+    resp = ec2.run_instances(
         ImageId=opts.ami,
         KeyName=key,
         InstanceType=opts.instance_type,
@@ -253,17 +294,59 @@ def create_instances(ec2, opts):
         Placement={
             "AvailabilityZone": opts.zone
         },
-        TagSpecifications=[
-            {
-                "ResourceType": "instance",
-                "Tags": [
-                    {"Key": "Name", "Value": opts.name_tag}
-                ]
-            }
-        ],
         BlockDeviceMappings=create_new_block_device_mapping(opts),
         DryRun=bool(opts.dry_run)
     )
+
+    for instance in resp["Instances"]:
+        print("instance launched at '{region}', {id}  ({state})".
+              format(region=instance["Placement"]["AvailabilityZone"],
+                     id=instance["InstanceId"],
+                     state=instance["State"]["Name"]))
+
+    instances = resp["Instances"]
+
+    # tags
+    if opts.name_tag:
+        print("giving name tags...")
+        time.sleep(5)
+        i = 0
+        for instance in instances:
+            ec2.create_tags(
+                Resources=[instance["InstanceId"]],
+                Tags=[{"Key": "Name",
+                       "Value": "{n}{id}".format(n=opts.name_tag, id="" if len(instances) == 1 else "-{}".format(i))}])
+            i += 1
+
+    # wait for instances
+    if opts.wait or opts.install_docker:
+        wait_for_instances(ec2, opts, instances)
+
+    # instance information
+    instances = describe_instances(ec2, [k["InstanceId"] for k in instances])["Reservations"]
+    for res in instances:
+        for instance in res["Instances"]:
+            prettify_instance(instance)
+
+    # docker
+    if opts.install_docker:
+        print("installing docker...")
+        install_docker(opts, instances)
+
+    print("instances created.")
+
+
+def provision_docker(ec2, opts):
+    if opts.instance_ids is None:
+        error("List of instances must be specified with --instance-ids flag!")
+
+    if opts.identity is None:
+        error("Identity flag (-i or --identity) must be set in order ssh instances!")
+
+    if opts.user is None:
+        error("SSH user (-u or --user) is missing!")
+
+    install_docker(opts, describe_instances(ec2, opts.instance_ids)["Reservations"])
 
 
 def create_new_block_device_mapping(opts):
@@ -339,31 +422,10 @@ def get_or_create_security_group(ec2, opts):
             raise
 
 
-def list_opts(opts):
-    print("ami={}".format(opts.ami))
-    print("type={}".format(opts.instance_type))
-    print("keypair={}".format(opts.key_pair))
-    print("dryrun={}".format(opts.dry_run))
-    print("zone={}".format(opts.zone))
-    print("region={}".format(opts.region))
-    print("count={}".format(opts.count))
-    print("sec_group={}".format(opts.sec_group))
-    print("nametag={}".format(opts.name_tag))
-    print("iops={}".format(opts.iops))
-    print("vol={}".format(opts.ebs_vol_size))
-    print("volumeType={}".format(opts.ebs_vol_type))
-    print("deleteTerm={}".format(opts.ebs_delete_on_term))
-    print("volName={}".format(opts.ebs_vol_name))
-    print("instanceids={}".format(opts.instance_ids))
-    print("days={}".format(opts.days))
-    print("months={}".format(opts.months))
-    print("profile={}".format(opts.profile))
-    print("ignore-service-usage={}".format(opts.ignore_service_usage))
-    print("emails={}".format(opts.emails))
-    print("template={}".format(opts.template))
-
-
 def stop_instances(ec2, opts):
+    if opts.instance_ids is None:
+        error("Please set --instance-id to stop instances!")
+
     resp = input("Following instances will be stopped {}\n\nAre you sure you want to stop instances? (y/N):".
                  format(opts.instance_ids))
 
@@ -373,12 +435,15 @@ def stop_instances(ec2, opts):
 
         for instance_info in [(state["InstanceId"], state["PreviousState"]["Name"], state["CurrentState"]["Name"])
                               for state in resp["StoppingInstances"]]:
-            print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
-                                                                                instance_info[1],
-                                                                                instance_info[2]))
+            print("\ninstanceId={}\npreviousState={}\ncurrentState={}".format(instance_info[0],
+                                                                              instance_info[1],
+                                                                              instance_info[2]))
 
 
 def terminate_instances(ec2, opts):
+    if opts.instance_ids is None:
+        error("Please set --instance-id to terminate instances!")
+
     resp = input("Following instances will be terminated {}\n\nAre you sure you want to terminate instances? (y/N):".
                  format(opts.instance_ids))
 
@@ -388,20 +453,23 @@ def terminate_instances(ec2, opts):
 
         for instance_info in [(state["InstanceId"], state["PreviousState"]["Name"], state["CurrentState"]["Name"])
                               for state in resp["TerminatingInstances"]]:
-            print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
-                                                                                instance_info[1],
-                                                                                instance_info[2]))
+            print("\ninstanceId={}\npreviousState={}\ncurrentState={}".format(instance_info[0],
+                                                                              instance_info[1],
+                                                                              instance_info[2]))
 
 
 def start_instances(ec2, opts):
+    if opts.instance_ids is None:
+        error("Please set --instance-id to start instances!")
+
     print("Starting following instances {}...".format(opts.instance_ids))
     resp = ec2.start_instances(InstanceIds=opts.instance_ids, DryRun=bool(opts.dry_run))
 
     for instance_info in [(instance["InstanceId"], instance["PreviousState"]["Name"], instance["CurrentState"]["Name"])
                           for instance in resp["StartingInstances"]]:
-        print("\ninstanceId={}\npreviousState={}\ncurrentState={}\n".format(instance_info[0],
-                                                                            instance_info[1],
-                                                                            instance_info[2]))
+        print("\ninstanceId={}\npreviousState={}\ncurrentState={}".format(instance_info[0],
+                                                                          instance_info[1],
+                                                                          instance_info[2]))
 
 
 def get_organization_info(client_org):
@@ -467,7 +535,8 @@ def email_costs(ce, org, opts):
                opts.smtp_from,
                opts.emails,
                rendered_text,
-               DEFAULT_COST_EMAIL_SUBJECT if not org_info else "{} for {}".format(DEFAULT_COST_EMAIL_SUBJECT, org_info[1]))
+               DEFAULT_COST_EMAIL_SUBJECT if not org_info else "{} for {}".format(DEFAULT_COST_EMAIL_SUBJECT,
+                                                                                  org_info[1]))
 
 
 def get_costs(ce, opts):
@@ -576,8 +645,6 @@ def get_account_names(ce, start, end):
 def execute():
     (opts, action) = parse_args()
 
-    # list_opts(opts)
-
     try:
 
         session = boto3.Session(profile_name=opts.profile if opts.profile else None,
@@ -609,12 +676,19 @@ def execute():
             list_costs(session.client("ce"), session.client("organizations"), opts)
         elif action == "email-costs":
             email_costs(session.client("ce"), session.client("organizations"), opts)
+        elif action == "install-docker":
+            provision_docker(ec2, opts)
         else:
             print("'{}' not supported!".format(action))
 
     except Exception as e:
-        print(e)
-        sys.exit(1)
+        error(e)
+
+
+def error(msg=None):
+    if msg:
+        print(msg, file=sys.stderr)
+    sys.exit(1)
 
 
 class ServiceUsageCost:
