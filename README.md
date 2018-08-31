@@ -149,9 +149,3 @@ Options:
   --install-docker      Install Docker on instances
   --do-not-wait         Do not wait until instances are fully up and running
 ```
-
-## Todo
-
-* Provision Docker [+]
-* Provision and manage a Spark cluster [-]
-* --format [-]

@@ -29,7 +29,6 @@ from dateutil.relativedelta import relativedelta
 from jinja2 import Environment, FileSystemLoader
 
 from eyws import __version__
-from eyws.docker import install_docker
 
 UBUNTU_AMI = "ami-de8fb135"  # Ubuntu Server 16.04 LTS SSD
 DEFAULT_AMI = UBUNTU_AMI
@@ -266,7 +265,6 @@ def wait_for_instances(ec2, opts, instances, expected_state="instance_running"):
 
 
 def create_instances(ec2, opts):
-
     if opts.key_pair is None:
         error("Key pair name must be set (-k or --key-pair)!")
 

@@ -1,3 +1,17 @@
+# Copyright 2018 Can Elmas
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#    http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pipes
 import subprocess
 import time
@@ -8,7 +22,8 @@ def ssh(host, opts, command):
     tries = 0
     while True:
         try:
-            return subprocess.check_call(ssh_command(opts) + ['-t', '-t', '%s@%s' % (opts.user, host), stringify_command(command)])
+            return subprocess.check_call(
+                ssh_command(opts) + ['-t', '-t', '%s@%s' % (opts.user, host), stringify_command(command)])
         except subprocess.CalledProcessError as e:
             if tries > 5:
                 if e.returncode == 255:
