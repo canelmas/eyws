@@ -13,7 +13,7 @@
 # limitations under the License.
 
 __name__ = "eyws"
-__version__ = "1.0.0b4"
+__version__ = "1.0.0b5"
 __author__ = "Can Elmas"
 __email__ = "canelm@gmail.com"
 __license__ = "Apache License 2.0"
