@@ -89,7 +89,6 @@ Usage: eyws <action> [options]
 		list-regions
 		list-images
 		list-sec-groups
-		list-costs
 		list-key-pairs
 		list-costs
 		email-costs
