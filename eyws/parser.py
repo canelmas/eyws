@@ -128,8 +128,8 @@ def parse_args():
     parser.add_option("--ignore-service-usage", action="store_true",
                       help="Do not display costs for each service type")
 
-    parser.add_option("--emails", action="append", dest="emails",
-                      help="Comma separated email addresses to notify i.e. can@x.com, b@y.com")
+    parser.add_option("--emails", action="callback", callback=split_emails, dest="emails", type="string",
+                      help="Comma separated (without space) email addresses to notify i.e. can@x.com,b@y.com")
 
     parser.add_option("--template", help="Jinja template file")
 
@@ -687,6 +687,10 @@ def error(msg=None):
     if msg:
         print(msg, file=sys.stderr)
     sys.exit(1)
+
+
+def split_emails(option, opt, value, parser):
+    setattr(parser.values, option.dest, value.split(','))
 
 
 class ServiceUsageCost:
