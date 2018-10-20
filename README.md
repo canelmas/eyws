@@ -136,7 +136,7 @@ Options:
                         (default=1)
   --ignore-service-usage
                         Do not display costs for each service type
-  --emails=EMAILS       Comma separated  (without space) email addresses to notify i.e.
+  --emails=EMAILS       Comma separated (without space) email addresses to notify i.e.
                         can@x.com,b@y.com
   --template=TEMPLATE   Jinja template file
   --smtp-host=SMTP_HOST
