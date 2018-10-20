@@ -1,3 +1,7 @@
+[![image](https://img.shields.io/pypi/v/eyws.svg)](https://pypi.org/project/eyws/)
+[![image](https://img.shields.io/pypi/l/eyws.svg)](https://pypi.org/project/eyws/)
+[![image](https://img.shields.io/pypi/pyversions/eyws.svg)](https://pypi.org/project/eyws/)
+
 ## What?
 
 An alternate easy to use AWS cli for some specific daily jobs.
