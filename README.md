@@ -1,6 +1,6 @@
 ## What?
 
-An alternate easy to use AWS cli, for some specific jobs.
+An alternate easy to use AWS cli for some specific daily jobs.
 
 It basically provides functions that I need frequently.
 
