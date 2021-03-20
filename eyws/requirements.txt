@@ -1,4 +1,4 @@
-jinja2==2.10
+jinja2==2.11.3
 python-dateutil==2.7.3
 boto3==1.8.1
 botocore==1.11.1
